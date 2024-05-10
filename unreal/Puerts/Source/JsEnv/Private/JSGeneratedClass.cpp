@@ -11,7 +11,6 @@
 #include "JSGeneratedFunction.h"
 #include "JSWidgetGeneratedClass.h"
 #include "JSAnimGeneratedClass.h"
-#include "FunctionParametersDuplicate.h"
 #include "JSLogger.h"
 
 #define OLD_METHOD_PREFIX "__puerts_old__"
@@ -252,6 +251,11 @@ UFunction* UJSGeneratedClass::Mixin(v8::Isolate* Isolate, UClass* Class, UFuncti
     Function->StaticLink(true);
     Function->ClearInternalFlags(EInternalObjectFlags::Native);
 
+    if (Class->HasAnyInternalFlags(EInternalObjectFlags::RootSet))
+    {
+        Function->AddToRoot();
+    }
+
     if (Existed)
     {
         Function->Original = Super;
@@ -281,7 +285,13 @@ void UJSGeneratedClass::Restore(UClass* Class)
     OrphanedClass->ClassGeneratedBy = Class->ClassGeneratedBy;
 #endif
 
+#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 2
+    UField** PP = nullptr;
+    UField* ChildrenPtr = Class->Children.Get();
+    PP = &ChildrenPtr;
+#else
     auto PP = &Class->Children;
+#endif
     while (*PP)
     {
         if (auto JGF = Cast<UJSGeneratedFunction>(*PP))    // to delete
@@ -296,6 +306,10 @@ void UJSGeneratedClass::Restore(UClass* Class)
             JGF->JsFunction.Reset();
             *PP = JGF->Next;
             Class->RemoveFunctionFromFunctionMap(JGF);
+            if (JGF->IsRooted())
+            {
+                JGF->RemoveFromRoot();
+            }
             JGF->Rename(nullptr, OrphanedClass, REN_DontCreateRedirectors | REN_DoNotDirty | REN_ForceNoResetLoaders);
             FLinkerLoad::InvalidateExport(JGF);
         }
@@ -304,7 +318,12 @@ void UJSGeneratedClass::Restore(UClass* Class)
             PP = &(*PP)->Next;
         }
     }
+#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 2
+    ChildrenPtr = Class->Children.Get();
+    PP = &ChildrenPtr;
+#else
     PP = &Class->Children;
+#endif
     while (*PP)
     {
         if (auto Function = Cast<UFunction>(*PP))

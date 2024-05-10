@@ -8,6 +8,7 @@
 
 #pragma once
 #include "UECompatible.h"
+#include "Containers/Ticker.h"
 
 #if PLATFORM_ANDROID || PLATFORM_WINDOWS || PLATFORM_IOS || PLATFORM_MAC || PLATFORM_LINUX
 

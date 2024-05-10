@@ -6,6 +6,8 @@
  * which is part of this source code package.
  */
 
+#include <cstdint>
+
 #include "FFIBinding.h"
 #if WITH_FFI
 #include "JSClassRegister.h"
@@ -21,6 +23,7 @@
 #else
 #include "ffi.h"
 #endif
+
 
 static FuncPtr* GFuncArray = nullptr;
 static uint32_t GFuncArrayLength = 0;

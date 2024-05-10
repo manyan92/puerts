@@ -1985,6 +1985,8 @@ declare module "ue" {
          * @param InValues 
          */
         function umeta(...InValues: MetaKey[]): any;
+        function attach(parent: MetaKey): any;
+        function defaultValue(parent: MetaKey): any;
     }
 
     /**

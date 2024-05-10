@@ -13,6 +13,8 @@ public class DeclarationGenerator : ModuleRules
 {
     public DeclarationGenerator(ReadOnlyTargetRules Target) : base(Target) 
     {
+        PCHUsage = PCHUsageMode.NoPCHs;
+		PrivateDependencyModuleNames.AddRange(new string[] { "PuertsEditor" });
         PublicIncludePaths.AddRange(
             new string[] {
                 "Programs/UnrealHeaderTool/Public",

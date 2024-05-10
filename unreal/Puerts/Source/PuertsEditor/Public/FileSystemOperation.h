@@ -6,6 +6,19 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "FileSystemOperation.generated.h"
 
+USTRUCT(BlueprintType)
+struct FPuretsPluginInfo
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY()
+	FString PluginName;
+
+	UPROPERTY()
+	FString Path;
+};
+
 /**
  *
  */
@@ -14,6 +27,7 @@ class PUERTSEDITOR_API UFileSystemOperation : public UBlueprintFunctionLibrary
 {
     GENERATED_BODY()
 
+public:
     UFUNCTION(BlueprintCallable, Category = "File")
     static bool ReadFile(FString Path, FString& Data);
 
@@ -41,6 +55,9 @@ class PUERTSEDITOR_API UFileSystemOperation : public UBlueprintFunctionLibrary
     UFUNCTION(BlueprintCallable, Category = "File")
     static TArray<FString> GetFiles(FString Path);
 
+	UFUNCTION(BlueprintCallable, Category = "File")
+	static TArray<FPuretsPluginInfo> GetAllPluginInfos();
+	
     UFUNCTION(BlueprintCallable, Category = "File")
     static void PuertsNotifyChange(FString Path, FString Source);
 

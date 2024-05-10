@@ -7,6 +7,7 @@
  */
 
 #include "TypeScriptGeneratedClass.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "PropertyMacros.h"
 #include "JSGeneratedFunction.h"
 #include "JSLogger.h"
@@ -237,9 +238,10 @@ void UTypeScriptGeneratedClass::CancelRedirection()
             continue;
         }
         Function->FunctionFlags &= ~FUNC_Native;
-        Function->SetNativeFunc(ProcessInternal);
+        // Function->SetNativeFunc(ProcessInternal);
+        Function->Bind();    // the same as Function->SetNativeFunc(ProcessInternal) if no native
         NativeFunctionLookupTable.RemoveAll(
-            [=](const FNativeFunctionLookup& NativeFunctionLookup) { return Function->GetFName() == NativeFunctionLookup.Name; });
+            [&](const FNativeFunctionLookup& NativeFunctionLookup) { return Function->GetFName() == NativeFunctionLookup.Name; });
     }
 }
 
@@ -274,11 +276,18 @@ void UTypeScriptGeneratedClass::Bind()
         //然而在构造对象还有一个PostConstructInit步骤，里头有个从基类的CDO拷贝值的过程（ps：UE对象构造巨复杂，对象巨大）
         //这个过程如果是CDO的话，目前只找到把属性的flag设置为CPF_Transient | CPF_InstancedReference才能搞定
         // TODO: 后续尝试下TypeScript生成类不继承UBlueprintGeneratedClass的实现，能实现的话优雅些
-        for (TFieldIterator<PropertyMacro> PropertyIt(this, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
-        {
-            PropertyMacro* Property = *PropertyIt;
-            Property->SetPropertyFlags(CPF_SkipSerialization | CPF_Transient | CPF_InstancedReference);
-        }
+        
+        ///这里进行一下调整   如果Property是个Object则保留原始值
+        // for (TFieldIterator<PropertyMacro> PropertyIt(this, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
+        // {
+        //     PropertyMacro* Property = *PropertyIt;
+        //
+        //     if (Property->IsA<FObjectProperty>())
+        //     {
+        //         Property->SetPropertyFlags(CPF_SkipSerialization | CPF_Transient | CPF_InstancedReference);
+        //     }
+        // }
+
 
         //可避免非CDO的在PostConstructInit从基类拷贝值
         // ClassFlags |= CLASS_Native;

@@ -12,6 +12,7 @@
 
 #include "CoreMinimal.h"
 #include "CoreUObject.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "PropertyMacros.h"
 
 #if ENGINE_MINOR_VERSION >= 25 || ENGINE_MAJOR_VERSION > 4
@@ -111,6 +112,7 @@ public:
         if (!OwnerIsClass)
         {
             if ((InProperty->IsA<StructPropertyMacro>() && StructProperty->Struct != FArrayBuffer::StaticStruct() &&
+                    StructProperty->Struct != FArrayBufferValue::StaticStruct() &&
                     StructProperty->Struct != FJsObject::StaticStruct()) ||
                 InProperty->IsA<MapPropertyMacro>() || InProperty->IsA<ArrayPropertyMacro>() || InProperty->IsA<SetPropertyMacro>())
             {

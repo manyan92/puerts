@@ -21,6 +21,10 @@
 #endif
 #include "Commandlets/Commandlet.h"
 #include "TypeScriptGeneratedClass.h"
+#include "Runtime/Launch/Resources/Version.h"
+#include "Misc/Paths.h"
+#include "Misc/CommandLine.h"
+#include "Misc/ConfigCacheIni.h"
 
 DEFINE_LOG_CATEGORY_STATIC(PuertsModule, Log, All);
 
@@ -221,16 +225,18 @@ public:
                 JsEnv = MakeShared<puerts::FJsEnv>(std::make_shared<puerts::DefaultJSModuleLoader>(Settings.RootPath),
                     std::make_shared<puerts::FDefaultLogger>(),
                     DebuggerPortFromCommandLine < 0 ? Settings.DebugPort : DebuggerPortFromCommandLine);
+
+                if (Settings.WaitDebugger)
+                {
+                    JsEnv->WaitDebugger(Settings.WaitDebuggerTimeout);
+                }
             }
             else
             {
                 JsEnv = MakeShared<puerts::FJsEnv>(Settings.RootPath);
             }
 
-            if (Settings.WaitDebugger)
-            {
-                JsEnv->WaitDebugger(Settings.WaitDebuggerTimeout);
-            }
+
 
             JsEnv->RebindJs();
             UE_LOG(PuertsModule, Log, TEXT("Normal Mode started!"));

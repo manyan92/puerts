@@ -8,43 +8,43 @@
 
 #pragma once
 
-#include "Converter.hpp"
+#include "ScriptBackend.hpp"
 #include "DataTransfer.h"
 #include "ArrayBuffer.h"
 #include "UECompatible.h"
 
-#define UsingUClass(CLS)                          \
-    namespace puerts                              \
-    {                                             \
-    template <>                                   \
-    struct ScriptTypeName<CLS>                    \
-    {                                             \
-        static constexpr auto value()             \
-        {                                         \
-            return Literal(#CLS).Sub<1>();        \
-        }                                         \
-    };                                            \
-    }                                             \
-    namespace puerts                              \
-    {                                             \
-    template <>                                   \
-    struct is_uetype<CLS> : public std::true_type \
-    {                                             \
-    };                                            \
+#define UsingUClass(CLS)                             \
+    namespace puerts                                 \
+    {                                                \
+    template <>                                      \
+    struct ScriptTypeName<CLS>                       \
+    {                                                \
+        static constexpr auto value()                \
+        {                                            \
+            return internal::Literal(#CLS).Sub<1>(); \
+        }                                            \
+    };                                               \
+    }                                                \
+    namespace puerts                                 \
+    {                                                \
+    template <>                                      \
+    struct is_uetype<CLS> : public std::true_type    \
+    {                                                \
+    };                                               \
     }
 
-#define UsingTArrayWithName(CLS, CLSNAME) \
-    namespace puerts                      \
-    {                                     \
-    template <>                           \
-    struct ScriptTypeName<TArray<CLS>>    \
-    {                                     \
-        static constexpr auto value()     \
-        {                                 \
-            return Literal(CLSNAME);      \
-        }                                 \
-    };                                    \
-    }                                     \
+#define UsingTArrayWithName(CLS, CLSNAME)      \
+    namespace puerts                           \
+    {                                          \
+    template <>                                \
+    struct ScriptTypeName<TArray<CLS>>         \
+    {                                          \
+        static constexpr auto value()          \
+        {                                      \
+            return internal::Literal(CLSNAME); \
+        }                                      \
+    };                                         \
+    }                                          \
     __DefObjectType(TArray<CLS>) __DefCDataPointerConverter(TArray<CLS>)
 
 #define RegisterTArray(CLS)                                                                              \
@@ -80,6 +80,8 @@ struct TSharedPtrExtension
 
 namespace puerts
 {
+namespace v8_impl
+{
 class TCharStringHolder
 {
 public:
@@ -102,14 +104,12 @@ private:
 };
 
 template <>
-struct ArgumentBufferType<const TCHAR*>
+struct CustomArgumentBufferType<const TCHAR*>
 {
     using type = TCharStringHolder;
-    static constexpr bool is_custom = true;
+    static constexpr bool enable = true;
 };
 
-namespace converter
-{
 template <>
 struct Converter<FString>
 {
@@ -143,19 +143,12 @@ struct Converter<FName>
         if (value->IsArrayBuffer())
         {
             auto Ab = v8::Local<v8::ArrayBuffer>::Cast(value);
-#if defined(HAS_ARRAYBUFFER_NEW_WITHOUT_STL)
             size_t ByteLength;
-            auto Data = v8::ArrayBuffer_Get_Data(Ab, ByteLength);
+            auto Data = DataTransfer::GetArrayBufferData(Ab, ByteLength);
             if (ByteLength == sizeof(FName))
             {
                 return *static_cast<FName*>(Data);
             }
-#else
-            if (Ab->GetContents().ByteLength() == sizeof(FName))
-            {
-                return *static_cast<FName*>(Ab->GetContents().Data());
-            }
-#endif
         }
         return UTF8_TO_TCHAR(*v8::String::Utf8Value(context->GetIsolate(), value));
     }
@@ -212,11 +205,7 @@ struct Converter<FArrayBuffer>
 {
     static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, FArrayBuffer value)
     {
-#if defined(HAS_ARRAYBUFFER_NEW_WITHOUT_STL)
-        return v8::ArrayBuffer_New_Without_Stl(context->GetIsolate(), value.Data, value.Length);
-#else
-        return v8::ArrayBuffer::New(context->GetIsolate(), value.Data, value.Length);
-#endif
+        return DataTransfer::NewArrayBuffer(context, value.Data, value.Length);
     }
 
     static FArrayBuffer toCpp(v8::Local<v8::Context> context, const v8::Local<v8::Value>& value)
@@ -226,25 +215,59 @@ struct Converter<FArrayBuffer>
         {
             v8::Local<v8::ArrayBufferView> BuffView = value.As<v8::ArrayBufferView>();
             auto Ab = BuffView->Buffer();
-#if defined(HAS_ARRAYBUFFER_NEW_WITHOUT_STL)
-            Ret.Data = static_cast<char*>(v8::ArrayBuffer_Get_Data(Ab)) + BuffView->ByteOffset();
-#else
-            Ret.Data = static_cast<char*>(Ab->GetContents().Data()) + BuffView->ByteOffset();
-#endif
+            Ret.Data = static_cast<char*>(DataTransfer::GetArrayBufferData(Ab)) + BuffView->ByteOffset();
             Ret.Length = BuffView->ByteLength();
         }
         else if (value->IsArrayBuffer())
         {
             auto Ab = v8::Local<v8::ArrayBuffer>::Cast(value);
-#if defined(HAS_ARRAYBUFFER_NEW_WITHOUT_STL)
             size_t ByteLength;
-            Ret.Data = static_cast<char*>(v8::ArrayBuffer_Get_Data(Ab, ByteLength));
+            Ret.Data = static_cast<char*>(DataTransfer::GetArrayBufferData(Ab, ByteLength));
             Ret.Length = ByteLength;
-#else
-            Ret.Data = Ab->GetContents().Data();
-            Ret.Length = Ab->GetContents().ByteLength();
-#endif
         }
+        return Ret;
+    }
+
+    static bool accept(v8::Local<v8::Context> context, const v8::Local<v8::Value>& value)
+    {
+        return value->IsArrayBuffer() || value->IsArrayBufferView();
+    }
+};
+
+template <>
+struct Converter<FArrayBufferValue>
+{
+    static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, FArrayBufferValue& value)
+    {
+        v8::Local<v8::ArrayBuffer> Ab = v8::ArrayBuffer::New(context->GetIsolate(), value.Data.Num());
+        void* Buff = static_cast<char*>(DataTransfer::GetArrayBufferData(Ab));
+        ::memcpy(Buff, value.Data.GetData(), value.Data.Num());
+        return Ab;
+    }
+
+    static FArrayBufferValue toCpp(v8::Local<v8::Context> context, const v8::Local<v8::Value>& value)
+    {
+        FArrayBufferValue Ret;
+        size_t Len = 0;
+        void* Data = nullptr;
+        if (value->IsArrayBufferView())
+        {
+            v8::Local<v8::ArrayBufferView> BuffView = value.As<v8::ArrayBufferView>();
+            auto Ab = BuffView->Buffer();
+            Data = static_cast<char*>(DataTransfer::GetArrayBufferData(Ab)) + BuffView->ByteOffset();
+            Len = BuffView->ByteLength();
+        }
+        else if (value->IsArrayBuffer())
+        {
+            auto Ab = v8::Local<v8::ArrayBuffer>::Cast(value);
+            Data = DataTransfer::GetArrayBufferData(Ab, Len);
+        }
+        if (Len > 0 && Data)
+        {
+            Ret.Data.AddUninitialized(Len);
+            ::memcpy(Ret.Data.GetData(), Data, Len);
+        }
+
         return Ret;
     }
 
@@ -271,6 +294,8 @@ struct Converter<T*, typename std::enable_if<std::is_convertible<T*, const UObje
 
     static bool accept(v8::Local<v8::Context> context, const v8::Local<v8::Value>& value)
     {
+        if (value.As<v8::Object>()->IsNullOrUndefined())
+            return true;
         return ::puerts::DataTransfer::IsInstanceOf(context->GetIsolate(), T::StaticClass(), value.As<v8::Object>());
     }
 };
@@ -296,14 +321,14 @@ struct Converter<T*, typename std::enable_if<!std::is_convertible<T*, const UObj
     }
 };
 
-}    // namespace converter
+}    // namespace v8_impl
 
 template <>
 struct ScriptTypeName<FString>
 {
     static constexpr auto value()
     {
-        return Literal("string");
+        return internal::Literal("string");
     }
 };
 
@@ -312,7 +337,7 @@ struct ScriptTypeName<FName>
 {
     static constexpr auto value()
     {
-        return Literal("string");
+        return internal::Literal("string");
     }
 };
 
@@ -321,7 +346,7 @@ struct ScriptTypeName<const TCHAR*>
 {
     static constexpr auto value()
     {
-        return Literal("string");
+        return internal::Literal("string");
     }
 };
 
@@ -331,7 +356,7 @@ struct ScriptTypeName<FText>
 {
     static constexpr auto value()
     {
-        return Literal("string");
+        return internal::Literal("string");
     }
 };
 #endif
@@ -341,7 +366,16 @@ struct ScriptTypeName<FArrayBuffer>
 {
     static constexpr auto value()
     {
-        return Literal("ArrayBuffer");
+        return internal::Literal("ArrayBuffer");
+    }
+};
+
+template <>
+struct ScriptTypeName<FArrayBufferValue>
+{
+    static constexpr auto value()
+    {
+        return internal::Literal("ArrayBuffer");
     }
 };
 
@@ -351,7 +385,7 @@ struct ScriptTypeNameWithNamespace<T,
 {
     static constexpr auto value()
     {
-        return Literal("cpp.") + ScriptTypeName<T>::value();
+        return internal::Literal("cpp.") + ScriptTypeName<T>::value();
     }
 };
 
@@ -361,7 +395,7 @@ struct ScriptTypeNameWithNamespace<T,
 {
     static constexpr auto value()
     {
-        return Literal("UE.") + ScriptTypeName<T>::value();
+        return internal::Literal("UE.") + ScriptTypeName<T>::value();
     }
 };
 
@@ -370,7 +404,7 @@ struct ScriptTypeName<TSharedPtr<T>>
 {
     static constexpr auto value()
     {
-        return Literal("UE.TSharedPtr<") + ScriptTypeNameWithNamespace<T>::value() + Literal(">");
+        return internal::Literal("UE.TSharedPtr<") + ScriptTypeNameWithNamespace<T>::value() + internal::Literal(">");
     }
 };
 
@@ -379,7 +413,7 @@ struct ScriptTypeName<TArray<T>>
 {
     static constexpr auto value()
     {
-        return Literal("UE.TArray<") + ScriptTypeNameWithNamespace<T>::value() + Literal(">");
+        return internal::Literal("UE.TArray<") + ScriptTypeNameWithNamespace<T>::value() + internal::Literal(">");
     }
 };
 
@@ -388,7 +422,7 @@ struct ScriptTypeName<TSet<T>>
 {
     static constexpr auto value()
     {
-        return Literal("UE.TSet<") + ScriptTypeNameWithNamespace<T>::value() + Literal(">");
+        return internal::Literal("UE.TSet<") + ScriptTypeNameWithNamespace<T>::value() + internal::Literal(">");
     }
 };
 
@@ -397,8 +431,8 @@ struct ScriptTypeName<TMap<TKey, TValue>>
 {
     static constexpr auto value()
     {
-        return Literal("UE.TMap<") + ScriptTypeNameWithNamespace<TKey>::value() + Literal(", ") +
-               ScriptTypeNameWithNamespace<TValue>::value() + Literal(">");
+        return internal::Literal("UE.TMap<") + ScriptTypeNameWithNamespace<TKey>::value() + internal::Literal(", ") +
+               ScriptTypeNameWithNamespace<TValue>::value() + internal::Literal(">");
     }
 };
 
@@ -415,7 +449,7 @@ struct IsUStructHelper<T, Void_t<decltype(&TScriptStructTraits<T>::Get)>> : std:
 };
 }    // namespace internal
 
-namespace converter
+namespace v8_impl
 {
 template <typename T>
 struct Converter<T*,
@@ -457,6 +491,6 @@ struct Converter<T, typename std::enable_if<internal::IsUStructHelper<T>::value>
     }
 };
 
-}    // namespace converter
+}    // namespace v8_impl
 
 }    // namespace puerts

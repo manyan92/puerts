@@ -3,8 +3,14 @@
 #include "FileSystemOperation.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
+#include "Misc/EngineVersionComparison.h"
+#if UE_VERSION_OLDER_THAN(5, 0, 0)
 #include "HAL/PlatformFilemanager.h"
+#else
+#include "HAL/PlatformFileManager.h"
+#endif
 #include "PuertsModule.h"
+#include "Interfaces/IPluginManager.h"
 #include "Misc/SecureHash.h"
 #ifdef PUERTS_WITH_SOURCE_CONTROL
 #include "SourceControlHelpers.h"
@@ -89,6 +95,20 @@ TArray<FString> UFileSystemOperation::GetFiles(FString Path)
     Path = Path + "*";
     FileManager.FindFiles(Dirs, *Path, true, false);
     return Dirs;
+}
+
+TArray<FPuretsPluginInfo> UFileSystemOperation::GetAllPluginInfos()
+{
+    TArray<FPuretsPluginInfo> Rets;
+    auto Plugins = IPluginManager::Get().GetEnabledPlugins();
+    for (auto Plugin : Plugins)
+    {
+        if (Plugin->GetType() == EPluginType::Project && Plugin->GetName() != TEXT("Puerts") && Plugin->GetName() != TEXT("ReactUMG"))
+        {
+            Rets.Add({Plugin.Get().GetName(),FPaths::ConvertRelativePathToFull(Plugin.Get().GetBaseDir())});
+        }
+    }
+    return Rets;
 }
 
 void UFileSystemOperation::PuertsNotifyChange(FString Path, FString Source)

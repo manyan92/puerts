@@ -15,7 +15,7 @@
 
 // Portable Embedded Scripting API
 
-#define PESAPI_VERSION 5
+#define PESAPI_VERSION 8
 
 #define PESAPI_EXTERN
 
@@ -62,6 +62,8 @@
 
 #define PESAPI_MODULE_INITIALIZER(modname) PESAPI_MODULE_INITIALIZER_X(PESAPI_MODULE_INITIALIZER_BASE, modname, PESAPI_VERSION)
 
+#define PESAPI_MODULE_VERSION() PESAPI_MODULE_INITIALIZER_X(PESAPI_MODULE_INITIALIZER_BASE, version, 0)
+
 #ifdef USING_OBJC_REFLECTION
 
 #define PESAPI_MODULE(modname, initfunc)                      \
@@ -77,14 +79,29 @@
 
 #else
 
-#define PESAPI_MODULE(modname, initfunc)                                                            \
-    EXTERN_C_START                                                                                  \
-    PESAPI_MODULE_EXPORT void PESAPI_MODULE_INITIALIZER(modname)(pesapi_func_ptr * func_ptr_array); \
-    EXTERN_C_END                                                                                    \
-    PESAPI_MODULE_EXPORT void PESAPI_MODULE_INITIALIZER(modname)(pesapi_func_ptr * func_ptr_array)  \
-    {                                                                                               \
-        pesapi_init(func_ptr_array);                                                                \
-        initfunc();                                                                                 \
+#define PESAPI_MODULE(modname, initfunc)                                                                   \
+    EXTERN_C_START                                                                                         \
+    PESAPI_MODULE_EXPORT void PESAPI_MODULE_INITIALIZER(modname)(pesapi_func_ptr * func_ptr_array);        \
+    PESAPI_MODULE_EXPORT const char* PESAPI_MODULE_INITIALIZER(dynamic)(pesapi_func_ptr * func_ptr_array); \
+    PESAPI_MODULE_EXPORT int PESAPI_MODULE_VERSION()();                                                    \
+    EXTERN_C_END                                                                                           \
+    PESAPI_MODULE_EXPORT void PESAPI_MODULE_INITIALIZER(modname)(pesapi_func_ptr * func_ptr_array)         \
+    {                                                                                                      \
+        pesapi_init(func_ptr_array);                                                                       \
+        initfunc();                                                                                        \
+    }                                                                                                      \
+    PESAPI_MODULE_EXPORT const char* PESAPI_MODULE_INITIALIZER(dynamic)(pesapi_func_ptr * func_ptr_array)  \
+    {                                                                                                      \
+        if (func_ptr_array)                                                                                \
+        {                                                                                                  \
+            pesapi_init(func_ptr_array);                                                                   \
+            initfunc();                                                                                    \
+        }                                                                                                  \
+        return #modname;                                                                                   \
+    }                                                                                                      \
+    PESAPI_MODULE_EXPORT int PESAPI_MODULE_VERSION()()                                                     \
+    {                                                                                                      \
+        return PESAPI_VERSION;                                                                             \
     }
 
 #endif
@@ -123,6 +140,7 @@ PESAPI_EXTERN pesapi_value pesapi_create_uint64(pesapi_env env, uint64_t value);
 PESAPI_EXTERN pesapi_value pesapi_create_double(pesapi_env env, double value);
 PESAPI_EXTERN pesapi_value pesapi_create_string_utf8(pesapi_env env, const char* str, size_t length);
 PESAPI_EXTERN pesapi_value pesapi_create_binary(pesapi_env env, void* str, size_t length);
+PESAPI_EXTERN pesapi_value pesapi_create_array(pesapi_env env);
 
 PESAPI_EXTERN bool pesapi_get_value_bool(pesapi_env env, pesapi_value value);
 PESAPI_EXTERN int32_t pesapi_get_value_int32(pesapi_env env, pesapi_value value);
@@ -132,6 +150,7 @@ PESAPI_EXTERN uint64_t pesapi_get_value_uint64(pesapi_env env, pesapi_value valu
 PESAPI_EXTERN double pesapi_get_value_double(pesapi_env env, pesapi_value value);
 PESAPI_EXTERN const char* pesapi_get_value_string_utf8(pesapi_env env, pesapi_value value, char* buf, size_t* bufsize);
 PESAPI_EXTERN void* pesapi_get_value_binary(pesapi_env env, pesapi_value pvalue, size_t* bufsize);
+PESAPI_EXTERN uint32_t pesapi_get_array_length(pesapi_env env, pesapi_value value);
 
 PESAPI_EXTERN bool pesapi_is_null(pesapi_env env, pesapi_value value);
 PESAPI_EXTERN bool pesapi_is_undefined(pesapi_env env, pesapi_value value);
@@ -145,6 +164,7 @@ PESAPI_EXTERN bool pesapi_is_string(pesapi_env env, pesapi_value value);
 PESAPI_EXTERN bool pesapi_is_object(pesapi_env env, pesapi_value value);
 PESAPI_EXTERN bool pesapi_is_function(pesapi_env env, pesapi_value value);
 PESAPI_EXTERN bool pesapi_is_binary(pesapi_env env, pesapi_value value);
+PESAPI_EXTERN bool pesapi_is_array(pesapi_env env, pesapi_value value);
 
 PESAPI_EXTERN pesapi_value pesapi_create_native_object(pesapi_env env, const void* class_id, void* object_ptr, bool copy);
 PESAPI_EXTERN void* pesapi_get_native_object_ptr(pesapi_env env, pesapi_value value);
@@ -212,6 +232,9 @@ PESAPI_EXTERN void pesapi_set_property_info(pesapi_property_descriptor propertie
 PESAPI_EXTERN void pesapi_define_class(const void* type_id, const void* super_type_id, const char* type_name,
     pesapi_constructor constructor, pesapi_finalize finalize, size_t property_count, pesapi_property_descriptor properties,
     void* userdata);
+
+PESAPI_EXTERN void pesapi_class_type_info(const char* proto_magic_id, const void* type_id, const void* constructor_info,
+    const void* methods_info, const void* functions_info, const void* properties_info, const void* variables_info);
 
 EXTERN_C_END
 

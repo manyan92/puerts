@@ -20,7 +20,6 @@
 #include "FileHelpers.h"
 #include "Misc/PackageName.h"
 #include "UObject/MetaData.h"
-#include "FunctionParametersDuplicate.h"
 #include "CoreGlobals.h"
 #include "K2Node_FunctionEntry.h"
 #include "EdGraphSchema_K2_Actions.h"
@@ -38,8 +37,12 @@
 #include "TypeScriptBlueprint.h"
 #include "utility"
 #include "PuertsModule.h"
+#include "TSCompileErrorReport.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
+#include "Kismet2/ComponentEditorUtils.h"
+#include "Editor.h"
+#include "HAL/PlatformFileManager.h"
 
 #define LOCTEXT_NAMESPACE "UPEBlueprintAsset"
 
@@ -68,22 +71,19 @@ static bool IsPlaying()
         return;                                                                                            \
     }
 
-bool UPEBlueprintAsset::Existed(const FString& InName, const FString& InPath)
+bool UPEBlueprintAsset::Existed(const FString& InName)
 {
-    FString BPPath = FString(TEXT(TS_BLUEPRINT_PATH)) / InName + TEXT(".uasset");
-    if (BPPath[0] == TEXT('/') || BPPath[0] == TEXT('\\'))
-    {
-        BPPath = BPPath.Mid(1);
-    }
-    BPPath = FPaths::ProjectContentDir() / BPPath;
+    const FString ToPath = FString("Content")/TEXT(TS_BLUEPRINT_PATH);
+    FString BPPath = InName.Replace(TEXT("TypeScripts/"),*ToPath);
+    BPPath = BPPath.Replace(TEXT(".ts"),TEXT(".uasset"));
     IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
     return PlatformFile.FileExists(*BPPath);
 }
 
 bool UPEBlueprintAsset::LoadOrCreate(
-    const FString& InName, const FString& InPath, UClass* ParentClass, int32 InSetFlags, int32 InClearFlags)
+    const FString& GameModule, const FString& InName, const FString& InPath, UClass* ParentClass, int32 InSetFlags, int32 InClearFlags)
 {
-    FString PackageName = FString(TEXT("/Game" TS_BLUEPRINT_PATH)) / InPath / InName;
+    FString PackageName = FString(GameModule.Replace(TEXT("@"),TEXT("/")) + TEXT(TS_BLUEPRINT_PATH)) / InPath / InName;
 
     // UE_LOG(LogTemp, Warning, TEXT("LoadOrCreate.PackageName: %s"), *PackageName);
 
@@ -167,7 +167,7 @@ bool UPEBlueprintAsset::LoadOrCreate(
     }
 }
 
-bool UPEBlueprintAsset::LoadOrCreateWithMetaData(const FString& InName, const FString& InPath, UClass* InParentClass,
+bool UPEBlueprintAsset::LoadOrCreateWithMetaData(const FString& GameModule, const FString& InName, const FString& InPath, UClass* InParentClass,
     int32 InSetFlags, int32 InClearFlags, UPEClassMetaData* InMetaData)
 {
     if (!IsValid(InParentClass))
@@ -175,7 +175,7 @@ bool UPEBlueprintAsset::LoadOrCreateWithMetaData(const FString& InName, const FS
         return false;
     }
 
-    if (!LoadOrCreate(InName, InPath, InParentClass, InSetFlags, InClearFlags))
+    if (!LoadOrCreate(GameModule, InName, InPath, InParentClass, InSetFlags, InClearFlags))
     {    //	create the class
         return false;
     }
@@ -551,8 +551,7 @@ void UPEBlueprintAsset::AddFunction(FName InName, bool IsVoid, FPEGraphPinType I
                 //处理标签改变的情况
                 Blueprint->FunctionGraphs.RemoveAll([&](UEdGraph* Graph) { return Graph->GetFName() == InName; });
 
-                UEdGraph* ExistingGraph = FindObject<UEdGraph>(Blueprint, *(InName.ToString()));
-                if (ExistingGraph)
+                if (UEdGraph* ExistingGraph = FindObject<UEdGraph>(Blueprint, *(InName.ToString())))
                 {
                     ExistingGraph->Rename(*FString::Printf(TEXT("%s%s"), *ExistingGraph->GetName(), TEXT("__Removed")), nullptr,
                         REN_DontCreateRedirectors | REN_DoNotDirty | REN_ForceNoResetLoaders);
@@ -594,17 +593,15 @@ void UPEBlueprintAsset::AddFunction(FName InName, bool IsVoid, FPEGraphPinType I
         else
         {
             CanChangeCheck();
-            UEdGraph* EventGraph = FBlueprintEditorUtils::FindEventGraph(Blueprint);
-            if (EventGraph)
+            if (UEdGraph* EventGraph = FBlueprintEditorUtils::FindEventGraph(Blueprint))
             {
                 EventGraph->Nodes.RemoveAll(
                     [&](UEdGraphNode* GraphNode)
                     {
-                        UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(GraphNode);
+                        const UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(GraphNode);
                         return CustomEvent && CustomEvent->CustomFunctionName == InName;
                     });
-                UEdGraph* ExistingGraph = FindObject<UEdGraph>(Blueprint, *(InName.ToString()));
-                if (ExistingGraph)
+                if (UEdGraph* ExistingGraph = FindObject<UEdGraph>(Blueprint, *(InName.ToString())))
                 {
                     ExistingGraph->Rename(*FString::Printf(TEXT("%s%s"), *ExistingGraph->GetName(), TEXT("__Removed")), nullptr,
                         REN_DontCreateRedirectors | REN_DoNotDirty | REN_ForceNoResetLoaders);
@@ -893,8 +890,7 @@ void UPEBlueprintAsset::ClearParameter()
 
 void UPEBlueprintAsset::RemoveComponent(FName ComponentName)
 {
-    auto SCS_Node = Blueprint->SimpleConstructionScript->FindSCSNode(ComponentName);
-    if (SCS_Node)
+    if (const auto SCS_Node = Blueprint->SimpleConstructionScript->FindSCSNode(ComponentName))
     {
         // from Editor\Kismet\Private\SSCSEditor.cpp: SSCSEditor::RemoveComponentNode
         FBlueprintEditorUtils::RemoveVariableNodes(Blueprint, SCS_Node->GetVariableName());
@@ -950,7 +946,7 @@ void UPEBlueprintAsset::RemoveComponent(FName ComponentName)
 
                 for (UClass* ChildClass : ChildrenOfClass)
                 {
-                    UBlueprintGeneratedClass* BPChildClass = CastChecked<UBlueprintGeneratedClass>(ChildClass);
+                    const UBlueprintGeneratedClass* BPChildClass = CastChecked<UBlueprintGeneratedClass>(ChildClass);
 
                     if (UActorComponent* Component =
                             (UActorComponent*) FindObjectWithOuter(BPChildClass, UActorComponent::StaticClass(), TemplateName))
@@ -966,31 +962,138 @@ void UPEBlueprintAsset::RemoveComponent(FName ComponentName)
     }
 }
 
+bool UPEBlueprintAsset::SetupAttachment(FName SourceFileName,FName InComponentName, FName InParentComponentName)
+{
+    if (Blueprint->SimpleConstructionScript)
+    {
+        const auto SCS_Node = Blueprint->SimpleConstructionScript->FindSCSNode(InComponentName);
+        if (!SCS_Node)
+        {
+            const FString ErrorInfo = FString::Printf(TEXT("SetupAttachment: can not find %s"), *InComponentName.ToString());
+            UE_LOG(LogTemp, Error, TEXT("%s"), *ErrorInfo);
+            UTSCompilerErrorReportSubsystem::AddErrorReport(SourceFileName,ETSCompileErrorLevel::Error,ErrorInfo);
+            return false;
+        }
+        if (!SCS_Node->ComponentClass || !SCS_Node->ComponentClass->IsChildOf<UActorComponent>())
+        {
+            const FString ErrorInfo = FString::Printf(TEXT("SetupAttachment: %s not a UActorComponent"), *InComponentName.ToString());
+            UE_LOG(LogTemp, Error, TEXT("%s"), *ErrorInfo);
+            UTSCompilerErrorReportSubsystem::AddErrorReport(SourceFileName,ETSCompileErrorLevel::Error,ErrorInfo);
+            return false;
+        }
+        const auto Parent_SCS_Node = Blueprint->SimpleConstructionScript->FindSCSNode(InParentComponentName);
+        if (!Parent_SCS_Node)
+        {
+            const FString ErrorInfo = FString::Printf(TEXT("SetupAttachment: can not find parent %s"), *InParentComponentName.ToString());
+            UE_LOG(LogTemp, Error, TEXT("%s"), *ErrorInfo);
+            UTSCompilerErrorReportSubsystem::AddErrorReport(SourceFileName,ETSCompileErrorLevel::Error,ErrorInfo);
+            return false;
+        }
+        if (!Parent_SCS_Node->ComponentClass || !Parent_SCS_Node->ComponentClass->IsChildOf<UActorComponent>())
+        {
+            const FString ErrorInfo = FString::Printf(TEXT("SetupAttachment: %s not a UActorComponent"), *InParentComponentName.ToString());
+            UE_LOG(LogTemp, Error, TEXT("%s"), *ErrorInfo);
+            UTSCompilerErrorReportSubsystem::AddErrorReport(SourceFileName,ETSCompileErrorLevel::Error,ErrorInfo);
+            return false;
+        }
+
+        if (!Parent_SCS_Node->ChildNodes.Contains(SCS_Node))
+        {
+            NeedSave = true;
+            Blueprint->SimpleConstructionScript->RemoveNode(SCS_Node);
+            if (USceneComponent* SceneComponentTemplate = Cast<USceneComponent>(SCS_Node->ComponentClass))
+            {
+                // Save current state
+                SceneComponentTemplate->Modify();
+
+                // Reset the attach socket name
+                SceneComponentTemplate->SetupAttachment(SceneComponentTemplate->GetAttachParent(), NAME_None);
+                SCS_Node->Modify();
+                SCS_Node->AttachToName = NAME_None;
+            }
+            Parent_SCS_Node->AddChildNode(SCS_Node);
+            return true;
+        }
+    }
+    return false;
+}
+
+void UPEBlueprintAsset::SetupAttachments(FName SourceFileName,TMap<FName, FName> InAttachments)
+{
+    if (Blueprint->SimpleConstructionScript)
+    {
+        bool bAnyComponentChange = false;
+        for (auto& KV : InAttachments)
+        {
+            if(SetupAttachment(SourceFileName, KV.Key, KV.Value))
+            {
+                bAnyComponentChange = true;
+            }
+        }
+
+        for (const auto& Component : ComponentsAdded)
+        {
+            if (const auto SCS_Node = Blueprint->SimpleConstructionScript->FindSCSNode(Component))
+            {
+                for (int32 ChildIdx = 0; ChildIdx < SCS_Node->ChildNodes.Num(); ChildIdx++)
+                {
+                    USCS_Node* ChildNode = SCS_Node->ChildNodes[ChildIdx];
+                    check(ChildNode != NULL);
+                    if (!InAttachments.Contains(ChildNode->GetVariableName()) ||
+                        InAttachments[ChildNode->GetVariableName()] != Component)
+                    {
+                        SCS_Node->RemoveChildNode(ChildNode);
+                        Blueprint->SimpleConstructionScript->AddNode(ChildNode);
+                        SCS_Node->Modify();
+                        NeedSave = true;
+                        bAnyComponentChange = true;
+                    }
+                }
+            }
+        }
+
+        if(bAnyComponentChange)
+            FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    }
+}
+
 void UPEBlueprintAsset::AddMemberVariable(FName NewVarName, FPEGraphPinType InGraphPinType, FPEGraphTerminalType InPinValueType,
-    int32 InLFlags, int32 InHFlags, int32 InLifetimeCondition)
+    int32 InLFlags, int32 InHFlags, bool bAutoInst, int32 InLifetimeCondition)
 {
     uint64 InFlags = (uint64) InHFlags << 32 | InLFlags;
     FEdGraphPinType PinType = ToFEdGraphPinType(InGraphPinType, InPinValueType);
+    bool bAnyComponentChange = false;
 
-    if (auto ComponentClass = Cast<UClass>(PinType.PinSubCategoryObject))
+    if (PinType.ContainerType == EPinContainerType::None)
     {
-        if (Blueprint->GeneratedClass->IsChildOf<AActor>() && Blueprint->SimpleConstructionScript &&
-            PinType.PinCategory == UEdGraphSchema_K2::PC_Object &&
-            (ComponentClass == UActorComponent::StaticClass() || ComponentClass->IsChildOf<UActorComponent>()))
+        if (auto ComponentClass = Cast<UClass>(PinType.PinSubCategoryObject))
         {
-            auto SCSNode = Blueprint->SimpleConstructionScript->FindSCSNode(NewVarName);
-            if (!SCSNode || SCSNode->ComponentClass != ComponentClass)
+            if (Blueprint->GeneratedClass->IsChildOf<AActor>() && Blueprint->SimpleConstructionScript &&
+                PinType.PinCategory == UEdGraphSchema_K2::PC_Object &&
+                (ComponentClass == UActorComponent::StaticClass() || ComponentClass->IsChildOf<UActorComponent>()))
             {
-                if (SCSNode)
+                auto SCSNode = Blueprint->SimpleConstructionScript->FindSCSNode(NewVarName);
+                
+                if (!SCSNode || SCSNode->ComponentClass != ComponentClass || !bAutoInst)
                 {
-                    RemoveComponent(NewVarName);
+                    if (SCSNode)
+                    {
+                        RemoveComponent(NewVarName);
+                        bAnyComponentChange = true;
+                    }
+
+                    if (bAutoInst)
+                    {
+                        USCS_Node* NewSCSNode = Blueprint->SimpleConstructionScript->CreateNode(ComponentClass, NewVarName);
+                        Blueprint->SimpleConstructionScript->AddNode(NewSCSNode);
+                        bAnyComponentChange = true;
+                    }
+                    
+                    NeedSave = true;
                 }
-                USCS_Node* NewSCSNode = Blueprint->SimpleConstructionScript->CreateNode(ComponentClass, NewVarName);
-                Blueprint->SimpleConstructionScript->AddNode(NewSCSNode);
-                NeedSave = true;
+                ComponentsAdded.Add(NewVarName);
+                return;
             }
-            ComponentsAdded.Add(NewVarName);
-            return;
         }
     }
 
@@ -1066,11 +1169,15 @@ void UPEBlueprintAsset::AddMemberVariable(FName NewVarName, FPEGraphPinType InGr
             NeedSave = true;
         }
     }
+
+    if(bAnyComponentChange)
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    
     MemberVariableAdded.Add(NewVarName);
 }
 
 void UPEBlueprintAsset::AddMemberVariableWithMetaData(FName InNewVarName, FPEGraphPinType InGraphPinType,
-    FPEGraphTerminalType InPinValueType, int32 InLFlags, int32 InHFLags, int32 InLifetimeCondition, UPEPropertyMetaData* InMetaData)
+    FPEGraphTerminalType InPinValueType, int32 InLFlags, int32 InHFLags, int32 InLifetimeCondition, bool bAutoInst, UPEPropertyMetaData* InMetaData)
 {
     if (IsValid(InMetaData))
     {    //	handle the conflict here
@@ -1086,7 +1193,7 @@ void UPEBlueprintAsset::AddMemberVariableWithMetaData(FName InNewVarName, FPEGra
         InLFlags = (static_cast<uint64>(InputFlags) & 0xffffffff);
         InHFLags = (static_cast<uint64>(InputFlags) >> 32);
     }
-    AddMemberVariable(InNewVarName, InGraphPinType, InPinValueType, InLFlags, InHFLags, InLifetimeCondition);
+    AddMemberVariable(InNewVarName, InGraphPinType, InPinValueType, InLFlags, InHFLags, bAutoInst, InLifetimeCondition);
     const int32 VarIndex = FBlueprintEditorUtils::FindNewVariableIndex(Blueprint, InNewVarName);
     if (VarIndex == INDEX_NONE || !IsValid(InMetaData))
     {
@@ -1099,11 +1206,92 @@ void UPEBlueprintAsset::AddMemberVariableWithMetaData(FName InNewVarName, FPEGra
         CanChangeCheck();
 }
 
+bool UPEBlueprintAsset::SetPropertyDefaultValue(TMap<FName, FString> DefaultName)
+{
+    bool bAnyChange = false;
+    TMap<FName,FString> OldValueMap;
+    UObject* GeneratedCDO = NULL;
+    UObject* Archetype = NULL;
+    const UClass* GenClass = NULL;
+    for (auto&& default_name : DefaultName)
+    {
+        const UClass* GeneratedClassObject = Blueprint->GeneratedClass;
+        GeneratedCDO = GeneratedClassObject ? GeneratedClassObject->GetDefaultObject(false) : nullptr;
+        if (GeneratedCDO)
+        {
+            GenClass = GeneratedCDO->GetClass();
+
+            Archetype = GeneratedCDO->GetArchetype();
+            
+            if (const FProperty* TargetProperty = FindFProperty<FProperty>(GenClass, default_name.Key))
+            {
+                FString& PreSetPropertyString = OldValueMap.FindOrAdd(default_name.Key);
+                if (FBlueprintEditorUtils::PropertyValueToString(TargetProperty,(uint8*)(GeneratedCDO),PreSetPropertyString))
+                {
+                    if (PreSetPropertyString != default_name.Value)
+                    {
+                        if(FBlueprintEditorUtils::PropertyValueFromString(TargetProperty, default_name.Value, (uint8*)(GeneratedCDO)))
+                        {
+                            FString PostSetPropertyString;
+                            FBlueprintEditorUtils::PropertyValueToString(TargetProperty,(uint8*)(GeneratedCDO),PostSetPropertyString);
+
+                            bAnyChange |= PreSetPropertyString != PostSetPropertyString;
+                        }
+                    }
+                }
+                
+            }
+        }
+    }
+
+    //Roll back value;
+    for (auto&& old_value_map : OldValueMap)
+    {
+        if (const FProperty* TargetProperty = FindFProperty<FProperty>(GenClass, old_value_map.Key))
+        {
+            FBlueprintEditorUtils::PropertyValueFromString(TargetProperty, old_value_map.Value, (uint8*)(GeneratedCDO));
+        }
+    }
+
+    if(bAnyChange)
+    {
+        for (auto&& default_name : DefaultName)
+        {
+            if (FProperty* TargetProperty = FindFProperty<FProperty>(GenClass, default_name.Key))
+            {
+                GeneratedCDO->PreEditChange(TargetProperty);
+
+                // FPropertyChangedEvent PropertyChangedEvent(TargetProperty, EPropertyChangeType::ValueSet, TArrayView({GeneratedCDO}));
+                //
+                // FPropertyChangedChainEvent PropertyChangedChainEvent(PropertyChain, PropertyChangedEvent);
+                FBlueprintEditorUtils::PropertyValueFromString(TargetProperty, default_name.Value, (uint8*)(GeneratedCDO));
+                FPropertyChangedEvent PropertyChangedEvent(TargetProperty, EPropertyChangeType::ValueSet);
+                GeneratedCDO->PostEditChangeProperty(PropertyChangedEvent);
+                FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(GeneratedCDO, PropertyChangedEvent);
+            }
+
+            
+            
+        }
+
+        
+
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    }
+        
+
+    return bAnyChange;
+}
+
 void UPEBlueprintAsset::RemoveNotExistedComponent()
 {
     if (IsPlaying())
     {
         return;
+    }
+    if (Blueprint && Blueprint->GeneratedClass && Blueprint->GeneratedClass->IsChildOf<AActor>())
+    {
+        ComponentsAdded.Add(TEXT("DefaultSceneRoot"));
     }
     if (Blueprint && Blueprint->SimpleConstructionScript)
     {
@@ -1121,7 +1309,7 @@ void UPEBlueprintAsset::RemoveNotExistedComponent()
             RemoveComponent(Name);
         }
     }
-    ComponentsAdded.Empty();
+    // ComponentsAdded.Empty();
 }
 
 void UPEBlueprintAsset::RemoveNotExistedMemberVariable()
@@ -1255,3 +1443,5 @@ void UPEBlueprintAsset::Save()
     }
     FunctionAdded.Empty();
 }
+
+#undef LOCTEXT_NAMESPACE

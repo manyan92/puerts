@@ -13,6 +13,8 @@ public class PuertsEditor : ModuleRules
 {
     public PuertsEditor(ReadOnlyTargetRules Target) : base(Target) 
     {
+        PCHUsage = PCHUsageMode.NoPCHs;
+		PrivateDependencyModuleNames.AddRange(new string[] { "WorkspaceMenuStructure" });
         PublicDependencyModuleNames.AddRange(
             new string[]
             {
@@ -33,7 +35,9 @@ public class PuertsEditor : ModuleRules
                 "AssetRegistry",
                 "KismetCompiler",
                 "BlueprintGraph",
-                "AssetTools"
+                "AssetTools",
+                "ToolMenus",
+                "EditorStyle",
             }
         );
         

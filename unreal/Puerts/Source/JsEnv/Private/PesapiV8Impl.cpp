@@ -15,6 +15,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <cstring>
 
 #pragma warning(push, 0)
 #include "v8.h"
@@ -144,11 +145,13 @@ pesapi_value pesapi_create_string_utf8(pesapi_env env, const char* str, size_t l
 pesapi_value pesapi_create_binary(pesapi_env env, void* bin, size_t length)
 {
     auto context = v8impl::V8LocalContextFromPesapiEnv(env);
-#if defined(HAS_ARRAYBUFFER_NEW_WITHOUT_STL)
-    return v8impl::PesapiValueFromV8LocalValue(v8::ArrayBuffer_New_Without_Stl(context->GetIsolate(), bin, length));
-#else
-    return v8impl::PesapiValueFromV8LocalValue(v8::ArrayBuffer::New(context->GetIsolate(), bin, length));
-#endif
+    return v8impl::PesapiValueFromV8LocalValue(puerts::DataTransfer::NewArrayBuffer(context, bin, length));
+}
+
+pesapi_value pesapi_create_array(pesapi_env env)
+{
+    auto context = v8impl::V8LocalContextFromPesapiEnv(env);
+    return v8impl::PesapiValueFromV8LocalValue(v8::Array::New(context->GetIsolate()));
 }
 
 bool pesapi_get_value_bool(pesapi_env env, pesapi_value pvalue)
@@ -221,22 +224,25 @@ void* pesapi_get_value_binary(pesapi_env env, pesapi_value pvalue, size_t* bufsi
         v8::Local<v8::ArrayBufferView> buffView = value.As<v8::ArrayBufferView>();
         *bufsize = buffView->ByteLength();
         auto Ab = buffView->Buffer();
-#if defined(HAS_ARRAYBUFFER_NEW_WITHOUT_STL)
-        return static_cast<char*>(v8::ArrayBuffer_Get_Data(Ab)) + buffView->ByteOffset();
-#else
-        return static_cast<char*>(Ab->GetContents().Data()) + buffView->ByteOffset();
-#endif
+        return static_cast<char*>(puerts::DataTransfer::GetArrayBufferData(Ab)) + buffView->ByteOffset();
     }
     if (value->IsArrayBuffer())
     {
         auto ab = v8::Local<v8::ArrayBuffer>::Cast(value);
-#if defined(HAS_ARRAYBUFFER_NEW_WITHOUT_STL)
-        return v8::ArrayBuffer_Get_Data(ab, *bufsize);
-#else
-        return ab->GetContents().Data();
-#endif
+        return puerts::DataTransfer::GetArrayBufferData(ab, *bufsize);
     }
     return nullptr;
+}
+
+uint32_t pesapi_get_array_length(pesapi_env env, pesapi_value pvalue)
+{
+    auto context = v8impl::V8LocalContextFromPesapiEnv(env);
+    auto value = v8impl::V8LocalValueFromPesapiValue(pvalue);
+    if (value->IsArray())
+    {
+        return value.As<v8::Array>()->Length();
+    }
+    return 0;
 }
 
 bool pesapi_is_null(pesapi_env env, pesapi_value pvalue)
@@ -309,6 +315,12 @@ bool pesapi_is_binary(pesapi_env env, pesapi_value pvalue)
 {
     auto value = v8impl::V8LocalValueFromPesapiValue(pvalue);
     return value->IsArrayBuffer() || value->IsArrayBufferView();
+}
+
+bool pesapi_is_array(pesapi_env env, pesapi_value pvalue)
+{
+    auto value = v8impl::V8LocalValueFromPesapiValue(pvalue);
+    return value->IsArray();
 }
 
 pesapi_value pesapi_create_native_object(pesapi_env env, const void* class_id, void* object_ptr, bool copy)
@@ -629,7 +641,11 @@ pesapi_value pesapi_eval(pesapi_env env, const uint8_t* code, size_t code_size, 
     memcpy(buff.data(), code, code_size);
     buff[code_size] = '\0';
     v8::Local<v8::String> source = v8::String::NewFromUtf8(isolate, buff.data(), v8::NewStringType::kNormal).ToLocalChecked();
+#if V8_MAJOR_VERSION > 8
+    v8::ScriptOrigin origin(isolate, url);
+#else
     v8::ScriptOrigin origin(url);
+#endif
 
     auto CompiledScript = v8::Script::Compile(context, source, &origin);
     if (CompiledScript.IsEmpty())
@@ -761,6 +777,9 @@ static void free_property_descriptor(pesapi_property_descriptor properties, size
 #endif
 #endif
 
+// set module name here during loading, set nullptr after module loaded
+const char* GPesapiModuleName = nullptr;
+
 MSVC_PRAGMA(warning(push))
 MSVC_PRAGMA(warning(disable : 4191))
 void pesapi_define_class(const void* type_id, const void* super_type_id, const char* type_name, pesapi_constructor constructor,
@@ -769,7 +788,17 @@ void pesapi_define_class(const void* type_id, const void* super_type_id, const c
     puerts::JSClassDefinition classDef = JSClassEmptyDefinition;
     classDef.TypeId = type_id;
     classDef.SuperTypeId = super_type_id;
-    classDef.ScriptName = type_name;
+    std::string ScriptNameWithModuleName = GPesapiModuleName == nullptr ? std::string() : GPesapiModuleName;
+    if (GPesapiModuleName)
+    {
+        ScriptNameWithModuleName += ".";
+        ScriptNameWithModuleName += type_name;
+        classDef.ScriptName = ScriptNameWithModuleName.c_str();
+    }
+    else
+    {
+        classDef.ScriptName = type_name;
+    }
     classDef.Data = userdata;
 
     classDef.Initialize = reinterpret_cast<puerts::InitializeFunc>(constructor);
@@ -778,14 +807,23 @@ void pesapi_define_class(const void* type_id, const void* super_type_id, const c
     std::vector<puerts::JSFunctionInfo> p_methods;
     std::vector<puerts::JSFunctionInfo> p_functions;
     std::vector<puerts::JSPropertyInfo> p_properties;
+    std::vector<puerts::JSPropertyInfo> p_variables;
 
     for (int i = 0; i < property_count; i++)
     {
         pesapi_property_descriptor p = properties + i;
         if (p->getter != nullptr || p->setter != nullptr)
         {
-            p_properties.push_back({p->name, reinterpret_cast<v8::FunctionCallback>(p->getter),
-                reinterpret_cast<v8::FunctionCallback>(p->setter), p->data});
+            if (p->is_static)
+            {
+                p_variables.push_back({p->name, reinterpret_cast<v8::FunctionCallback>(p->getter),
+                    reinterpret_cast<v8::FunctionCallback>(p->setter), p->data});
+            }
+            else
+            {
+                p_properties.push_back({p->name, reinterpret_cast<v8::FunctionCallback>(p->getter),
+                    reinterpret_cast<v8::FunctionCallback>(p->setter), p->data});
+            }
         }
         else if (p->method != nullptr)
         {
@@ -806,14 +844,30 @@ void pesapi_define_class(const void* type_id, const void* super_type_id, const c
     p_methods.push_back({nullptr, nullptr, nullptr});
     p_functions.push_back({nullptr, nullptr, nullptr});
     p_properties.push_back({nullptr, nullptr, nullptr, nullptr});
+    p_variables.push_back({nullptr, nullptr, nullptr, nullptr});
 
     classDef.Methods = p_methods.data();
     classDef.Functions = p_functions.data();
     classDef.Properties = p_properties.data();
+    classDef.Variables = p_variables.data();
 
     puerts::RegisterJSClass(classDef);
 }
 MSVC_PRAGMA(warning(pop))
+
+void pesapi_class_type_info(const char* proto_magic_id, const void* type_id, const void* constructor_info, const void* methods_info,
+    const void* functions_info, const void* properties_info, const void* variables_info)
+{
+    if (strcmp(proto_magic_id, PUERTS_BINDING_PROTO_ID()) != 0)
+    {
+        return;
+    }
+
+    puerts::SetClassTypeInfo(type_id, static_cast<const puerts::NamedFunctionInfo*>(constructor_info),
+        static_cast<const puerts::NamedFunctionInfo*>(methods_info), static_cast<const puerts::NamedFunctionInfo*>(functions_info),
+        static_cast<const puerts::NamedPropertyInfo*>(properties_info),
+        static_cast<const puerts::NamedPropertyInfo*>(variables_info));
+}
 
 EXTERN_C_END
 

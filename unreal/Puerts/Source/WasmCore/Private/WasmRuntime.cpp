@@ -57,13 +57,14 @@ uint8* WasmRuntime::GetBuffer(int& Length)
 {
     u8* base = m3MemData(_Runtime->memory.mallocated);
     Length = _Runtime->memory.mallocated->length;
-    return base + sizeof(M3MemoryHeader);
+    return base;
 }
 
 WasmModuleInstance* WasmRuntime::OnModuleInstance(WasmModuleInstance* InModuleInstance)
 {
     _AllModuleInstances.Add(InModuleInstance);
     WasmModuleInstance* ret = _AllModuleInstances[_AllModuleInstances.Num() - 1];
+    ret->Index = _AllModuleInstances.Num() - 1;
     if (MaxWasmStackAllocCount == 0)
     {
         if (ret->GetAllExportFunctions().Contains("GetStackParamBegin"))

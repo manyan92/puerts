@@ -7,6 +7,11 @@
  */
 
 #pragma once
+#include "JsEnv.h"
+
+#ifndef  USING_IN_UNREAL_ENGINE
+#define JSENV_API
+#endif
 
 typedef void (*FuncPtr)(void);
 

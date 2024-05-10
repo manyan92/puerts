@@ -4,6 +4,7 @@
 #include "DirectoryWatcherModule.h"
 #include "Modules/ModuleManager.h"
 #include "HAL/FileManager.h"
+#include "Interfaces/IPluginManager.h"
 #include "Misc/SecureHash.h"
 
 UPEDirectoryWatcher::UPEDirectoryWatcher()
@@ -17,7 +18,7 @@ bool UPEDirectoryWatcher::Watch(const FString& InDirectory)
     // UE_LOG(LogTemp, Warning, TEXT("PEDirectoryWatcher::Watch: %s"), *InDirectory);
     if (IFileManager::Get().DirectoryExists(*Directory))
     {
-        auto Changed = IDirectoryWatcher::FDirectoryChanged::CreateLambda(
+        const auto Changed = IDirectoryWatcher::FDirectoryChanged::CreateLambda(
             [&](const TArray<FFileChangeData>& FileChanges)
             {
                 TArray<FString> Added;
@@ -26,12 +27,46 @@ bool UPEDirectoryWatcher::Watch(const FString& InDirectory)
 
                 for (auto Change : FileChanges)
                 {
-                    //因为要算md5，所有过滤掉不关心的
-                    if (!Change.Filename.EndsWith(TEXT(".ts")) && !Change.Filename.EndsWith(TEXT(".tsx")) &&
-                        !Change.Filename.EndsWith(TEXT(".json")) && !Change.Filename.EndsWith(TEXT(".js")))
+                    FString ProjectSave = FPaths::ProjectSavedDir();
+                	FString ProjectIntermediate = FPaths::ProjectIntermediateDir();
+                	FString ProjectDDCache = FPaths::ProjectDir() / TEXT("DerivedDataCache");
+                	
+                    if (FPaths::IsUnderDirectory(Change.Filename, ProjectSave) ||
+                        FPaths::IsUnderDirectory(Change.Filename, ProjectIntermediate) ||
+                        FPaths::IsUnderDirectory(Change.Filename, ProjectDDCache))
                     {
                         continue;
                     }
+
+                	bool bSkip = false;
+                	auto Plugins = IPluginManager::Get().GetEnabledPlugins();
+                	for (const auto plugin : Plugins)
+                	{
+                		FString PluginSaveDir = plugin->GetBaseDir() / TEXT("Saved");
+                		FString PluginIntermediateDir = plugin->GetBaseDir() / TEXT("Intermediate");
+                		FString PluginDDCacheDir = plugin->GetBaseDir() / TEXT("DerivedDataCache");
+                		if (FPaths::IsUnderDirectory(Change.Filename, PluginSaveDir) ||
+                            FPaths::IsUnderDirectory(Change.Filename, PluginIntermediateDir) ||
+                            FPaths::IsUnderDirectory(Change.Filename, PluginDDCacheDir))
+                		{
+                			bSkip = true;
+                			break;
+                		}
+                	}
+
+                	if (bSkip)
+                    {
+                        continue;
+                    }
+                	
+                    //因为要算md5，过滤掉不关心的
+                    if (!Change.Filename.EndsWith(TEXT(".ts")) && !Change.Filename.EndsWith(TEXT(".mts")) &&
+                        !Change.Filename.EndsWith(TEXT(".tsx")) && !Change.Filename.EndsWith(TEXT(".json")) &&
+                        !Change.Filename.EndsWith(TEXT(".js")))
+                    {
+                        continue;
+                    }
+                	
                     FPaths::NormalizeFilename(Change.Filename);
                     Change.Filename = FPaths::ConvertRelativePathToFull(Change.Filename);
                     switch (Change.Action)
@@ -55,7 +90,9 @@ bool UPEDirectoryWatcher::Watch(const FString& InDirectory)
                             continue;
                     }
                 }
-                OnChanged.Broadcast(Added, Modified, Removed);
+
+                if(Added.Num() > 0 || Modified.Num() > 0 || Removed.Num() > 0)
+                    OnChanged.Broadcast(Added, Modified, Removed);
             });
         FDirectoryWatcherModule& DirectoryWatcherModule =
             FModuleManager::Get().LoadModuleChecked<FDirectoryWatcherModule>(TEXT("DirectoryWatcher"));

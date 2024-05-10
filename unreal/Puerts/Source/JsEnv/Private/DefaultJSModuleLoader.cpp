@@ -10,6 +10,7 @@
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 #include "Algo/Reverse.h"
+#include "Interfaces/IPluginManager.h"
 #if (ENGINE_MAJOR_VERSION >= 5)
 #include "HAL/PlatformFileManager.h"
 #else
@@ -24,7 +25,7 @@ static FString PathNormalize(const FString& PathIn)
     PathIn.ParseIntoArray(PathFrags, TEXT("/"));
     Algo::Reverse(PathFrags);
     TArray<FString> NewPathFrags;
-    bool FromRoot = PathIn.StartsWith(TEXT("/"));
+    const bool FromRoot = PathIn.StartsWith(TEXT("/"));
     while (PathFrags.Num() > 0)
     {
         FString E = PathFrags.Pop();
@@ -67,8 +68,8 @@ bool DefaultJSModuleLoader::CheckExists(const FString& PathIn, FString& Path, FS
 bool DefaultJSModuleLoader::SearchModuleInDir(
     const FString& Dir, const FString& RequiredModule, FString& Path, FString& AbsolutePath)
 {
-    FString Extension = FPaths::GetExtension(RequiredModule);
-    bool IsJs = Extension == TEXT("js") || Extension == TEXT("mjs") || Extension == TEXT("cjs") || Extension == TEXT("json");
+    const FString Extension = FPaths::GetExtension(RequiredModule);
+    const bool IsJs = Extension == TEXT("js") || Extension == TEXT("mjs") || Extension == TEXT("cjs") || Extension == TEXT("json");
     if (IsJs && SearchModuleWithExtInDir(Dir, RequiredModule, Path, AbsolutePath))
         return true;
     return SearchModuleWithExtInDir(Dir, RequiredModule + ".js", Path, AbsolutePath) ||
@@ -111,19 +112,56 @@ bool DefaultJSModuleLoader::Search(const FString& RequiredDir, const FString& Re
         }
     }
 
-    return SearchModuleInDir(FPaths::ProjectContentDir() / ScriptRoot, RequiredModule, Path, AbsolutePath) ||
-           (ScriptRoot != TEXT("JavaScript") &&
-               SearchModuleInDir(FPaths::ProjectContentDir() / TEXT("JavaScript"), RequiredModule, Path, AbsolutePath));
+    FString RequestPluginName;
+    FString RequestModulePath = RequiredModule;
+    if (RequiredModule.StartsWith(TEXT("@")))
+    {
+        int32 FirstSlash = INDEX_NONE;
+        if (RequiredModule.FindChar('/',FirstSlash))
+        {
+            RequestPluginName = RequiredModule.Mid(1,FirstSlash);
+            RequestModulePath = RequiredModule.Mid(FirstSlash);
+        }
+    }
+
+    for (const auto& EnabledPlugin : IPluginManager::Get().GetEnabledPlugins())
+    {
+        if (EnabledPlugin->GetType() != EPluginType::Project)
+        {
+            continue;
+        }
+        
+        if (!RequestPluginName.IsEmpty() && EnabledPlugin->GetName() != RequestPluginName)
+        {
+            continue;
+        }
+
+        if(SearchModuleInDir(EnabledPlugin->GetContentDir() / ScriptRoot, RequestModulePath, Path, AbsolutePath))
+        {
+            return true;
+        }
+    }
+
+    if (SearchModuleInDir(FPaths::ProjectContentDir() / TEXT("PuertsDependencies"), RequestModulePath, Path, AbsolutePath))
+    {
+        return true;
+    }
+    
+    if (SearchModuleInDir(FPaths::ProjectContentDir() / ScriptRoot, RequestModulePath, Path, AbsolutePath))
+    {
+        return true;
+    }
+
+    return false;
 }
 
 bool DefaultJSModuleLoader::Load(const FString& Path, TArray<uint8>& Content)
 {
     // return (FPaths::FileExists(FullPath) && FFileHelper::LoadFileToString(Content, *FullPath));
     IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-    IFileHandle* FileHandle = PlatformFile.OpenRead(*Path);
-    if (FileHandle)
+    if (IFileHandle* FileHandle = PlatformFile.OpenRead(*Path))
     {
-        int len = FileHandle->Size();
+        const int len = FileHandle->Size();
         Content.Reset(len + 2);
         Content.AddUninitialized(len);
         const bool Success = FileHandle->Read(Content.GetData(), len);

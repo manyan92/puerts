@@ -34,6 +34,10 @@ private:
     WASM_PTR MaxWasmStackAllocCount = 0;
 
 public:
+    WasmEnv* GetEnv()
+    {
+        return _Env;
+    }
     WasmStackAllocCacheInfo GetCurrentStackAllocInfo()
     {
         return CurrentStackAllocInfo;
@@ -64,6 +68,11 @@ public:
     uint16 GetRuntimeSeq() const
     {
         return _RuntimeSeq;
+    }
+
+    WasmModuleInstance* GetModuleInstance(int index) const
+    {
+        return _AllModuleInstances[index];
     }
 
     WasmModuleInstance* OnModuleInstance(WasmModuleInstance* InModuleInstance);

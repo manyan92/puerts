@@ -1,0 +1,11 @@
+C:\Projects\P4\Engine\Projects\Avalanche\Binaries\DotNET\UnrealBuildTool\Plugins\CSharpParamDefaultValueMetas\CSharpParamDefaultValueMetas.deps.json
+C:\Projects\P4\Engine\Projects\Avalanche\Binaries\DotNET\UnrealBuildTool\Plugins\CSharpParamDefaultValueMetas\CSharpParamDefaultValueMetas.dll
+C:\Projects\P4\Engine\Projects\Avalanche\Binaries\DotNET\UnrealBuildTool\Plugins\CSharpParamDefaultValueMetas\ref\CSharpParamDefaultValueMetas.dll
+C:\Projects\P4\Engine\Projects\Avalanche\Binaries\DotNET\UnrealBuildTool\Plugins\CSharpParamDefaultValueMetas\CSharpParamDefaultValueMetas.pdb
+C:\Projects\P4\Engine\Projects\Avalanche\Plugins\Puerts\Source\CSharpParamDefaultValueMetas\obj\Debug\CSharpParamDefaultValueMetas.ubtplugin.csproj.AssemblyReference.cache
+C:\Projects\P4\Engine\Projects\Avalanche\Plugins\Puerts\Source\CSharpParamDefaultValueMetas\obj\Debug\CSharpParamDefaultValueMetas.ubtplugin.GeneratedMSBuildEditorConfig.editorconfig
+C:\Projects\P4\Engine\Projects\Avalanche\Plugins\Puerts\Source\CSharpParamDefaultValueMetas\obj\Debug\CSharpParamDefaultValueMetas.ubtplugin.csproj.CoreCompileInputs.cache
+C:\Projects\P4\Engine\Projects\Avalanche\Plugins\Puerts\Source\CSharpParamDefaultValueMetas\obj\Debug\CSharpParamDefaultValueMetas.dll
+C:\Projects\P4\Engine\Projects\Avalanche\Plugins\Puerts\Source\CSharpParamDefaultValueMetas\obj\Debug\refint\CSharpParamDefaultValueMetas.dll
+C:\Projects\P4\Engine\Projects\Avalanche\Plugins\Puerts\Source\CSharpParamDefaultValueMetas\obj\Debug\CSharpParamDefaultValueMetas.pdb
+C:\Projects\P4\Engine\Projects\Avalanche\Plugins\Puerts\Source\CSharpParamDefaultValueMetas\obj\Debug\CSharpParamDefaultValueMetas.ubtplugin.csproj.CopyComplete

@@ -4,10 +4,10 @@
   "description": "PuertsEditor",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "postbuild": "copy ..\\Content\\JavaScript\\PuertsEditor\\* ..\\..\\..\\Content\\JavaScript\\PuertsEditor\\"
+    "postbuild": "copy ..\\Content\\PuertsDependencies\\PuertsEditor\\* ..\\..\\..\\Content\\PuertsDependencies\\PuertsEditor\\"
   },
   "dependencies": {
-    "typescript": "3.4.5"
+    "typescript": "4.7.4"
   },
   "devDependencies": {}
 }

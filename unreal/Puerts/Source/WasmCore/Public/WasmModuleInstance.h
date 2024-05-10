@@ -14,6 +14,7 @@
 #include <functional>
 class WasmRuntime;
 class WasmFunction;
+class WasmEnv;
 
 using AdditionLinkFunc = std::function<bool(IM3Module)>;
 
@@ -22,10 +23,22 @@ class WASMCORE_API WasmModuleInstance final
 private:
     IM3Module _Module;
     TMap<FName, WasmFunction*> _AllExportFunctions;
-    void _OnInit(WasmRuntime* Runtime, TArray<uint8>& InData, int LinkCategory, AdditionLinkFunc _Func);
+    TArray<uint8> Data;
 
 public:
-    WasmModuleInstance(WasmRuntime* Runtime, TArray<uint8>& InData, int LinkCategory, AdditionLinkFunc _Func = nullptr);
+    WasmModuleInstance(TArray<uint8>& InData);
+
+    int Index = -1;
+
+    bool ParseModule(WasmEnv* Env);
+    bool LoadModule(WasmRuntime* Runtime, int LinkCategory, AdditionLinkFunc _Func = nullptr);
+
+    size_t TableGrow(size_t N) const;
+
+    void TableSet(size_t Idx, IM3Function Function) const;
+
+    size_t TableLen() const;
+
     ~WasmModuleInstance();
     const TMap<FName, WasmFunction*>& GetAllExportFunctions()
     {

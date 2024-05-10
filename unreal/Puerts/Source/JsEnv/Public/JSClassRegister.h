@@ -23,11 +23,11 @@
 #pragma warning(push, 0)
 #include "v8.h"
 #pragma warning(pop)
-
 #include "TypeInfo.hpp"
 
 namespace puerts
 {
+class CFunctionInfo;
 struct JSENV_API JSFunctionInfo
 {
     const char* Name;
@@ -48,17 +48,8 @@ typedef void (*FinalizeFunc)(void* Ptr);
 
 typedef void* (*InitializeFunc)(const v8::FunctionCallbackInfo<v8::Value>& Info);
 
-struct NamedFunctionInfo
-{
-    const char* Name;
-    const CFunctionInfo* Type;
-};
-
-struct NamedPropertyInfo
-{
-    const char* Name;
-    const CTypeInfo* Type;
-};
+struct NamedFunctionInfo;
+struct NamedPropertyInfo;
 
 struct JSENV_API JSClassDefinition
 {
@@ -88,19 +79,22 @@ struct JSENV_API JSClassDefinition
 
 void JSENV_API RegisterJSClass(const JSClassDefinition& ClassDefinition);
 
+void JSENV_API SetClassTypeInfo(const void* TypeId, const NamedFunctionInfo* ConstructorInfos, const NamedFunctionInfo* MethodInfos,
+    const NamedFunctionInfo* FunctionInfos, const NamedPropertyInfo* PropertyInfos, const NamedPropertyInfo* VariableInfos);
+
 void JSENV_API ForeachRegisterClass(std::function<void(const JSClassDefinition* ClassDefinition)>);
 
 JSENV_API const JSClassDefinition* FindClassByID(const void* TypeId);
 
 const JSClassDefinition* FindCppTypeClassByName(const std::string& Name);
 
+#if USING_IN_UNREAL_ENGINE
 typedef void (*AddonRegisterFunc)(v8::Local<v8::Context> Context, v8::Local<v8::Object> Exports);
 
 AddonRegisterFunc FindAddonRegisterFunc(const std::string& Name);
 
 void RegisterAddon(const char* Name, AddonRegisterFunc RegisterFunc);
 
-#if USING_IN_UNREAL_ENGINE
 JSENV_API const JSClassDefinition* FindClassByType(UStruct* Type);
 #endif
 

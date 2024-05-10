@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Tencent is pleased to support the open source community by making Puerts available.
  * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
@@ -12,7 +12,7 @@
 #define USING_UE 0
 #endif
 
-#if (PLATFORM_WINDOWS || PLATFORM_MAC || WITH_INSPECTOR) && !defined(WITHOUT_INSPECTOR)
+#if (PLATFORM_WINDOWS || PLATFORM_MAC || PLATFORM_LINUX || WITH_INSPECTOR) && !defined(WITHOUT_INSPECTOR)
 
 #include "V8InspectorImpl.h"
 
@@ -111,6 +111,7 @@ void V8InspectorChannelImpl::SendMessage(v8_inspector::StringBuffer& MessageBuff
     else
     {
 #if PLATFORM_WINDOWS
+#pragma warning(disable : 4996)
         std::wstring_convert<std::codecvt_utf8_utf16<uint16_t>, uint16_t> Conv;
         const uint16_t* Start = MessageView.characters16();
 #else

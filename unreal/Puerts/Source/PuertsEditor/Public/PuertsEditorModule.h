@@ -14,6 +14,8 @@
 #include "Modules/ModuleManager.h"
 #include "CoreMinimal.h"
 
+class FCompilerErrorData;
+
 class IPuertsEditorModule : public IModuleInterface
 {
 public:
@@ -28,4 +30,12 @@ public:
     }
 
     virtual void SetCmdImpl(std::function<void(const FString&, const FString&)> Func) = 0;
+
+    virtual void OpenTSCompilerTools() = 0;
+
+    virtual void CloseTSCompilerTools() = 0;
+
+    virtual void UpdateTSCompilerError() = 0;
+
+    virtual TSharedPtr<FCompilerErrorData> GetCompilerErrorData() const = 0;
 };

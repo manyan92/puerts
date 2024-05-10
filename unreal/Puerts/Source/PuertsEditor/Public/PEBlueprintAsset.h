@@ -80,10 +80,10 @@ public:
     bool HasConstructor;
 
     UFUNCTION(BlueprintCallable, Category = "PEBlueprintAsset")
-    static bool Existed(const FString& InName, const FString& InPath);
+    static bool Existed(const FString& InName);
 
     UFUNCTION(BlueprintCallable, Category = "PEBlueprintAsset")
-    bool LoadOrCreate(const FString& InName, const FString& InPath, UClass* ParentClass, int32 InSetFlags, int32 InClearFlags);
+    bool LoadOrCreate(const FString& GameModule, const FString& InName, const FString& InPath, UClass* ParentClass, int32 InSetFlags, int32 InClearFlags);
 
     /**
      * @brief create the class with given meta data
@@ -96,7 +96,7 @@ public:
      * @return
      */
     UFUNCTION(BlueprintCallable, Category = "PEBlueprintAsset")
-    bool LoadOrCreateWithMetaData(const FString& InName, const FString& InPath, UClass* InParentClass, int32 InSetFlags,
+    bool LoadOrCreateWithMetaData(const FString& GameModule, const FString& InName, const FString& InPath, UClass* InParentClass, int32 InSetFlags,
         int32 InClearFlags, UPEClassMetaData* InMetaData);
 
     UFUNCTION(BlueprintCallable, Category = "PEBlueprintAsset")
@@ -139,9 +139,14 @@ public:
 
     void RemoveComponent(FName ComponentName);
 
+    bool SetupAttachment(FName SourceFileName,FName InComponentName, FName InParentComponentName);
+
+    UFUNCTION(BlueprintCallable, Category = "PEBlueprintAsset")
+    void SetupAttachments(FName SourceFileName,TMap<FName, FName> InAttachments);
+
     UFUNCTION(BlueprintCallable, Category = "PEBlueprintAsset")
     void AddMemberVariable(FName NewVarName, FPEGraphPinType InGraphPinType, FPEGraphTerminalType InPinValueType, int32 InLFlags,
-        int32 InHFlags, int32 InLifetimeCondition);
+        int32 InHFlags, bool bAutoInst, int32 InLifetimeCondition);
 
     /**
      * @brief create the property with given meta data
@@ -155,7 +160,10 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "PEBlueprintAsset")
     void AddMemberVariableWithMetaData(FName InNewVarName, FPEGraphPinType InGraphPinType, FPEGraphTerminalType InPinValueType,
-        int32 InLFlags, int32 InHFLags, int32 InLifetimeCondition, UPEPropertyMetaData* InMetaData);
+        int32 InLFlags, int32 InHFLags, int32 InLifetimeCondition,bool bAutoInst, UPEPropertyMetaData* InMetaData);
+
+    UFUNCTION(BlueprintCallable, Category = "PEBlueprintAsset")
+    bool SetPropertyDefaultValue(TMap<FName, FString> DefaultName);
 
     UFUNCTION(BlueprintCallable, Category = "PEBlueprintAsset")
     void RemoveNotExistedMemberVariable();
